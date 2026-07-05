@@ -286,24 +286,22 @@ function App() {
     }
   };
 
-  // --- Fetch Data from Backend API ---
-  const fetchData = async (silent = false) => {
-    if (!silent) setLoading(true);
+  // --- Fetch Daily Result from Backend API ---
+  const fetchDailyResult = async (date: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/results/all`);
+      const res = await fetch(`${API_BASE_URL}/results?date=${date}`);
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Lỗi kết nối máy chủ API');
       }
 
-      // Process results
       const resultsVal = data.results || {};
       const parsedResults: LotteryResult[] = [];
-      Object.keys(resultsVal).forEach(date => {
-        Object.keys(resultsVal[date]).forEach(region => {
-          const r = resultsVal[date][region];
+      Object.keys(resultsVal).forEach(dateStr => {
+        Object.keys(resultsVal[dateStr]).forEach(region => {
+          const r = resultsVal[dateStr][region];
           parsedResults.push({
-            date: date,
+            date: dateStr,
             region: region as Region,
             db: r.db ? r.db.split(',') : [],
             g1: r.g1 ? r.g1.split(',') : [],
@@ -320,21 +318,65 @@ function App() {
         });
       });
 
-      // Process DB Nam
+      // Merge new parsedResults into resultsList state by removing duplicates for this date
+      setResultsList(prev => {
+        const filtered = prev.filter(r => r.date !== date);
+        return [...filtered, ...parsedResults];
+      });
+      setUnsavedChanges(prev => ({ ...prev, results: false }));
+    } catch (error: any) {
+      console.error("Error fetching daily result:", error);
+      throw error;
+    }
+  };
+
+  // --- Fetch Yearly Data (DbNam & G1Nam) from Backend API ---
+  const fetchYearData = async (year: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/results/year?year=${year}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Lỗi kết nối máy chủ API');
+      }
+
       const dbNamVal = data.db_nam || {};
-      const parsedDbNam: DBNamItem[] = Object.keys(dbNamVal).map(date => ({
-        date: date,
-        number: dbNamVal[date].toString()
+      const parsedDbNam: DBNamItem[] = Object.keys(dbNamVal).map(dateStr => ({
+        date: dateStr,
+        number: dbNamVal[dateStr].toString()
       }));
 
-      // Process G1 Nam
       const g1NamVal = data.g1_nam || {};
-      const parsedG1Nam: G1NamItem[] = Object.keys(g1NamVal).map(date => ({
-        date: date,
-        number: g1NamVal[date].toString()
+      const parsedG1Nam: G1NamItem[] = Object.keys(g1NamVal).map(dateStr => ({
+        date: dateStr,
+        number: g1NamVal[dateStr].toString()
       }));
 
-      // Process Lo To
+      // Merge into lists by removing duplicates for the selected year
+      const yearPrefix = `${year}-`;
+      setDbNamList(prev => {
+        const filtered = prev.filter(item => !item.date.startsWith(yearPrefix));
+        return [...filtered, ...parsedDbNam];
+      });
+      setG1NamList(prev => {
+        const filtered = prev.filter(item => !item.date.startsWith(yearPrefix));
+        return [...filtered, ...parsedG1Nam];
+      });
+      setUnsavedChanges(prev => ({ ...prev, db_nam: false }));
+    } catch (error: any) {
+      console.error("Error fetching year data:", error);
+      throw error;
+    }
+  };
+
+  // --- Fetch Loto Data from Backend API ---
+  const fetchLotoData = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/results/loto`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Lỗi kết nối máy chủ API');
+      }
+
       const loToVal = data.lo_to || {};
       let parsedLoTo: LoToItem[] = [];
       if (Array.isArray(loToVal)) {
@@ -361,69 +403,35 @@ function App() {
         }));
       }
 
-      setResultsList(parsedResults);
-      setDbNamList(parsedDbNam);
-      setG1NamList(parsedG1Nam);
       setLoToList(parsedLoTo);
+      setUnsavedChanges(prev => ({ ...prev, lo_to: false }));
+    } catch (error: any) {
+      console.error("Error fetching loto data:", error);
+      throw error;
+    }
+  };
+
+  // --- Fetch Data from Backend API ---
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      if (activeTab === 'results') {
+        await fetchDailyResult(selectedDate);
+      } else if (activeTab === 'db_nam' || activeTab === 'g1_nam') {
+        await fetchYearData(selectedYear);
+      } else if (activeTab === 'lo_to') {
+        await fetchLotoData();
+      }
       setSyncStatus({ status: 'success', message: 'Tải dữ liệu máy chủ thành công!' });
-      setUnsavedChanges({ results: false, db_nam: false, lo_to: false });
     } catch (error: any) {
       console.error(error);
       setSyncStatus({
         status: 'error',
         message: 'Lỗi tải dữ liệu từ máy chủ kết quả.'
       });
-      if (!silent) {
-        loadMockData();
-      }
     } finally {
       if (!silent) setLoading(false);
     }
-  };
-
-  const loadMockData = () => {
-    // Generate empty list or load from localStorage if present
-    const cachedResults = localStorage.getItem('local_results');
-    const cachedDbNam = localStorage.getItem('local_db_nam');
-    const cachedG1Nam = localStorage.getItem('local_g1_nam');
-    const cachedLoTo = localStorage.getItem('local_lo_to');
-
-    if (cachedResults && cachedDbNam && cachedG1Nam && cachedLoTo) {
-      setResultsList(JSON.parse(cachedResults));
-      setDbNamList(JSON.parse(cachedDbNam));
-      setG1NamList(JSON.parse(cachedG1Nam));
-      setLoToList(JSON.parse(cachedLoTo));
-      return;
-    }
-
-    // Default Lo To 100 entries
-    const initialLo = Array.from({ length: 100 }, (_, i) => ({
-      number: i.toString().padStart(2, '0'),
-      count: Math.floor(Math.random() * 15) + 5,
-      lastSeen: Math.floor(Math.random() * 10),
-    }));
-
-    // Default Special prizes for recent days
-    const initialDbNam: DBNamItem[] = [];
-    const initialG1Nam: G1NamItem[] = [];
-    const now = new Date();
-    for (let i = 0; i < 60; i++) {
-      const d = new Date();
-      d.setDate(now.getDate() - i);
-      initialDbNam.push({
-        date: d.toISOString().split('T')[0],
-        number: Math.floor(100000 + Math.random() * 900000).toString(),
-      });
-      initialG1Nam.push({
-        date: d.toISOString().split('T')[0],
-        number: Math.floor(10000 + Math.random() * 90000).toString(),
-      });
-    }
-
-    setResultsList([]);
-    setDbNamList(initialDbNam);
-    setG1NamList(initialG1Nam);
-    setLoToList(initialLo);
   };
 
   useEffect(() => {
@@ -431,6 +439,13 @@ function App() {
       fetchData();
     }
   }, [isAuthenticated]);
+
+  // Tự động tải lại dữ liệu ngầm từ máy chủ khi đổi ngày, miền, năm hoặc chuyển tab
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData(true);
+    }
+  }, [selectedDate, activeRegion, activeTab, selectedYear]);
 
 
   // --- Daily Results editor logic ---
