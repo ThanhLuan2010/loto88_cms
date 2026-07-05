@@ -79,13 +79,13 @@ const parseResultToProvinces = (res: LotteryResult, activeRegion: Region): Provi
   
   const parsedVideos = res.videoUrls ? res.videoUrls.split(',') : [];
 
-  // Helper to extract the array of values for a specific province index
+  // Helper to extract the array of values for a specific province index from a flat array
   const getProvinceArray = (prizeKey: keyof Omit<LotteryResult, 'date' | 'region' | 'provinces'>, provinceIdx: number, defaultLen: number): string[] => {
     const prizeDraws = res[prizeKey] || [];
+    const numProvinces = isNorth ? 1 : count;
     return Array.from({ length: defaultLen }, (_, drawIdx) => {
-      const drawVal = prizeDraws[drawIdx] || '';
-      const parts = drawVal.split(',');
-      return parts[provinceIdx] || '';
+      const flatIdx = drawIdx * numProvinces + provinceIdx;
+      return prizeDraws[flatIdx] || '';
     });
   };
 
@@ -455,12 +455,14 @@ function App() {
   useEffect(() => {
     const existing = resultsList.find(r => r.date === selectedDate && r.region === activeRegion);
     const isNorth = activeRegion === 'NORTH';
+    const numProvs = isNorth ? 1 : 3;
 
     const normalizeArray = (arr: string[] | undefined | null, expectedLength: number): string[] => {
       const safeArr = Array.isArray(arr) ? arr : [];
-      if (safeArr.length === expectedLength) return safeArr;
-      if (safeArr.length > expectedLength) return safeArr.slice(0, expectedLength);
-      return [...safeArr, ...Array(expectedLength - safeArr.length).fill('')];
+      const totalLen = expectedLength * numProvs;
+      if (safeArr.length === totalLen) return safeArr;
+      if (safeArr.length > totalLen) return safeArr.slice(0, totalLen);
+      return [...safeArr, ...Array(totalLen - safeArr.length).fill('')];
     };
 
     let loadedResult: LotteryResult;
@@ -487,15 +489,15 @@ function App() {
         region: activeRegion,
         provinces: isNorth ? 'Miền Bắc' : activeRegion === 'CENTRAL' ? 'Đà Nẵng,Khánh Hòa,Đắk Lắk' : 'TP.HCM,Đồng Tháp,Cà Mau',
         videoUrls: '',
-        db: [''],
-        g1: [''],
-        g2: Array(isNorth ? 2 : 1).fill(''),
-        g3: Array(isNorth ? 6 : 2).fill(''),
-        g4: Array(isNorth ? 4 : 7).fill(''),
-        g5: Array(isNorth ? 6 : 1).fill(''),
-        g6: Array(3).fill(''),
-        g7: Array(isNorth ? 4 : 1).fill(''),
-        g8: isNorth ? [] : ['']
+        db: Array(1 * numProvs).fill(''),
+        g1: Array(1 * numProvs).fill(''),
+        g2: Array((isNorth ? 2 : 1) * numProvs).fill(''),
+        g3: Array((isNorth ? 6 : 2) * numProvs).fill(''),
+        g4: Array((isNorth ? 4 : 7) * numProvs).fill(''),
+        g5: Array((isNorth ? 6 : 1) * numProvs).fill(''),
+        g6: Array(3 * numProvs).fill(''),
+        g7: Array((isNorth ? 4 : 1) * numProvs).fill(''),
+        g8: isNorth ? [] : Array(1 * numProvs).fill('')
       };
     }
 
