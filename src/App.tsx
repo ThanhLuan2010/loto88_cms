@@ -11,16 +11,17 @@ import {
   Award,
   Users,
   Gift,
-  ShoppingBag
+  ShoppingBag,
+  Lock
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import './App.css';
-import { database, get, ref, set } from './firebase';
 import CustomersManager from './components/CustomersManager';
 import GiftsManager from './components/GiftsManager';
 import OrdersManager from './components/OrdersManager';
 
 // --- Default Mock Data Generators ---
+const API_BASE_URL = 'https://backend.vipmarts.com/api';
 const defaultRegions = ['NORTH', 'CENTRAL', 'SOUTH'] as const;
 type Region = typeof defaultRegions[number];
 
@@ -164,6 +165,13 @@ function App() {
   const [authError, setAuthError] = useState<string>('');
   const [shakeLogin, setShakeLogin] = useState<boolean>(false);
 
+  // --- Change Password Form States ---
+  const [currentPin, setCurrentPin] = useState<string>('');
+  const [newPin, setNewPin] = useState<string>('');
+  const [confirmPin, setConfirmPin] = useState<string>('');
+  const [pinChangeError, setPinChangeError] = useState<string>('');
+  const [pinChangeSuccess, setPinChangeSuccess] = useState<string>('');
+
   // --- Active App Data ---
   const [resultsList, setResultsList] = useState<LotteryResult[]>([]);
   const [dbNamList, setDbNamList] = useState<DBNamItem[]>([]);
@@ -171,7 +179,7 @@ function App() {
   const [loToList, setLoToList] = useState<LoToItem[]>([]);
 
   // --- UI Control States ---
-  const [activeTab, setActiveTab] = useState<'results' | 'db_nam' | 'g1_nam' | 'lo_to' | 'customers' | 'gifts' | 'orders'>('results');
+  const [activeTab, setActiveTab] = useState<'results' | 'db_nam' | 'g1_nam' | 'lo_to' | 'customers' | 'gifts' | 'orders' | 'change_password'>('results');
   const [loading, setLoading] = useState<boolean>(false);
   const [saveLoading, setSaveLoading] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<{ status: 'idle' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
@@ -202,16 +210,33 @@ function App() {
   const [g1CellEditVal, setG1CellEditVal] = useState<string>('');
 
   // --- Login handler ---
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinCode === 'admin888' || pinCode === '123456') {
-      setIsAuthenticated(true);
-      localStorage.setItem('cms_authenticated', 'true');
-      setAuthError('');
-    } else {
-      setAuthError('Mã PIN bảo mật không chính xác!');
+    setLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinCode })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsAuthenticated(true);
+        localStorage.setItem('cms_authenticated', 'true');
+        setAuthError('');
+      } else {
+        setAuthError(data.message || 'Mã PIN bảo mật không chính xác!');
+        setShakeLogin(true);
+        setTimeout(() => setShakeLogin(false), 500);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAuthError('Lỗi kết nối máy chủ! Vui lòng thử lại.');
       setShakeLogin(true);
       setTimeout(() => setShakeLogin(false), 500);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -221,24 +246,58 @@ function App() {
     localStorage.removeItem('cms_authenticated');
   };
 
-  // --- Fetch Data from Firebase Realtime Database ---
+  // --- Change Password handler ---
+  const handleChangePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinChangeError('');
+    setPinChangeSuccess('');
+
+    if (!currentPin || !newPin || !confirmPin) {
+      setPinChangeError('Vui lòng điền đầy đủ thông tin!');
+      return;
+    }
+
+    if (newPin !== confirmPin) {
+      setPinChangeError('Xác nhận mã PIN mới không khớp!');
+      return;
+    }
+
+    setSaveLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/change-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPin, newPin })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPinChangeSuccess(data.message || 'Thay đổi mã PIN bảo mật thành công!');
+        setCurrentPin('');
+        setNewPin('');
+        setConfirmPin('');
+      } else {
+        setPinChangeError(data.message || 'Mã PIN hiện tại không chính xác!');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setPinChangeError(`Lỗi kết nối máy chủ: ${err.message}`);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // --- Fetch Data from Backend API ---
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const resultsRef = ref(database, 'results');
-      const dbNamRef = ref(database, 'db_nam');
-      const g1NamRef = ref(database, 'g1_nam');
-      const loToRef = ref(database, 'lo_to');
-
-      const [resultsSnap, dbNamSnap, g1NamSnap, loToSnap] = await Promise.all([
-        get(resultsRef),
-        get(dbNamRef),
-        get(g1NamRef),
-        get(loToRef)
-      ]);
+      const res = await fetch(`${API_BASE_URL}/results/all`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Lỗi kết nối máy chủ API');
+      }
 
       // Process results
-      const resultsVal = resultsSnap.val() || {};
+      const resultsVal = data.results || {};
       const parsedResults: LotteryResult[] = [];
       Object.keys(resultsVal).forEach(date => {
         Object.keys(resultsVal[date]).forEach(region => {
@@ -262,21 +321,21 @@ function App() {
       });
 
       // Process DB Nam
-      const dbNamVal = dbNamSnap.val() || {};
+      const dbNamVal = data.db_nam || {};
       const parsedDbNam: DBNamItem[] = Object.keys(dbNamVal).map(date => ({
         date: date,
         number: dbNamVal[date].toString()
       }));
 
       // Process G1 Nam
-      const g1NamVal = g1NamSnap.val() || {};
+      const g1NamVal = data.g1_nam || {};
       const parsedG1Nam: G1NamItem[] = Object.keys(g1NamVal).map(date => ({
         date: date,
         number: g1NamVal[date].toString()
       }));
 
       // Process Lo To
-      const loToVal = loToSnap.val() || {};
+      const loToVal = data.lo_to || {};
       let parsedLoTo: LoToItem[] = [];
       if (Array.isArray(loToVal)) {
         parsedLoTo = loToVal.map((l: any, idx: number) => ({
@@ -659,7 +718,7 @@ function App() {
     alert('Đã cập nhật tần suất lô tô lên hệ thống thành công!');
   };
 
-  // --- SYNC / UPLOAD to Realtime Database ---
+  // --- SYNC / UPLOAD to Backend API ---
   const pushToDatabase = async (
     customResults = resultsList,
     customDbNam = dbNamList,
@@ -708,13 +767,22 @@ function App() {
         };
       });
 
-      // Update all at once in Realtime Database
-      await Promise.all([
-        set(ref(database, 'results'), resultsObj),
-        set(ref(database, 'db_nam'), dbNamObj),
-        set(ref(database, 'g1_nam'), g1NamObj),
-        set(ref(database, 'lo_to'), loToObj)
-      ]);
+      // Update in Backend Database
+      const res = await fetch(`${API_BASE_URL}/results/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          results: resultsObj,
+          db_nam: dbNamObj,
+          g1_nam: g1NamObj,
+          lo_to: loToObj
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Lỗi đồng bộ máy chủ');
+      }
 
       setSyncStatus({ status: 'success', message: 'Cập nhật hệ thống thành công!' });
     } catch (e: any) {
@@ -753,7 +821,9 @@ function App() {
             </p>
           </div>
 
-          <button className="login-btn" type="submit">ĐĂNG NHẬP HỆ THỐNG</button>
+          <button className="login-btn" type="submit" disabled={loading}>
+            {loading ? 'ĐANG XỬ LÝ...' : 'ĐĂNG NHẬP HỆ THỐNG'}
+          </button>
         </form>
       </div>
     );
@@ -807,6 +877,11 @@ function App() {
             <ShoppingBag size={18} />
             <span>Đơn Đổi Quà</span>
           </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '15px 0' }} />
+          <div className={`nav-item ${activeTab === 'change_password' ? 'active' : ''}`} onClick={() => setActiveTab('change_password')}>
+            <Lock size={18} />
+            <span>Đổi Mã PIN Bảo Mật</span>
+          </div>
         </nav>
 
         <div className="sidebar-footer">
@@ -834,6 +909,62 @@ function App() {
             {activeTab === 'customers' && <CustomersManager />}
             {activeTab === 'gifts' && <GiftsManager />}
             {activeTab === 'orders' && <OrdersManager />}
+
+            {/* TAB CHANGE PASSWORD */}
+            {activeTab === 'change_password' && (
+              <div className="tab-content">
+                <div className="screen-header">
+                  <div className="screen-info">
+                    <h2>Đổi Mã PIN Bảo Mật</h2>
+                    <p>Cập nhật mã PIN đăng nhập hệ thống quản trị Realtime Database.</p>
+                  </div>
+                </div>
+
+                <div className="card animate-fade-in" style={{ maxWidth: 500, margin: '0 auto', width: '100%' }}>
+                  <form onSubmit={handleChangePin} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    <div className="form-group">
+                      <label>Mã PIN Hiện Tại</label>
+                      <input
+                        type="password"
+                        placeholder="Nhập mã PIN hiện tại..."
+                        value={currentPin}
+                        onChange={(e) => setCurrentPin(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Mã PIN Mới</label>
+                      <input
+                        type="password"
+                        placeholder="Nhập mã PIN mới..."
+                        value={newPin}
+                        onChange={(e) => setNewPin(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Xác Nhận Mã PIN Mới</label>
+                      <input
+                        type="password"
+                        placeholder="Nhập lại mã PIN mới..."
+                        value={confirmPin}
+                        onChange={(e) => setConfirmPin(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {pinChangeError && <div className="error-text" style={{ alignSelf: 'stretch', marginTop: 0, marginBottom: 0 }}>{pinChangeError}</div>}
+                    {pinChangeSuccess && <div className="success-text" style={{ alignSelf: 'stretch', marginTop: 0, marginBottom: 0 }}>{pinChangeSuccess}</div>}
+
+                    <button className="btn-primary" type="submit" disabled={saveLoading} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 10 }}>
+                      <Check size={16} /> {saveLoading ? 'Đang cập nhật...' : 'CẬP NHẬT MÃ PIN'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {/* TAB DASHBOARD */}
             {false && (
@@ -922,7 +1053,6 @@ function App() {
                         type="date"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
-                        max={new Date().toISOString().split('T')[0]}
                       />
                     </div>
 

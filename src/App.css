@@ -385,6 +385,15 @@
   align-self: flex-start;
 }
 
+.success-text {
+  color: #10b981;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: -12px;
+  margin-bottom: 12px;
+  align-self: flex-start;
+}
+
 /* Tab Filter Bar */
 .filter-bar {
   display: flex;
