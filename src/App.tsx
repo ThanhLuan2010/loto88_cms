@@ -55,6 +55,66 @@ interface ProvinceEditState {
   g8: string[];
 }
 
+const getProvincesConfig = (region: string, dateStr: string) => {
+  if (region === 'NORTH') {
+    return {
+      count: 1,
+      names: ['Miền Bắc']
+    };
+  }
+
+  let dayOfWeek = 0;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const date = new Date(year, month, day);
+    dayOfWeek = date.getDay();
+  } else {
+    dayOfWeek = new Date(dateStr).getDay();
+  }
+
+  if (region === 'CENTRAL') {
+    const centralSchedule: { [key: number]: string[] } = {
+      0: ['Khánh Hòa', 'Kon Tum', 'Thừa Thiên Huế'], // Sunday
+      1: ['Thừa Thiên Huế', 'Phú Yên'], // Monday
+      2: ['Đắk Lắk', 'Quảng Nam'], // Tuesday
+      3: ['Đà Nẵng', 'Khánh Hòa'], // Wednesday
+      4: ['Bình Định', 'Quảng Trị', 'Quảng Bình'], // Thursday
+      5: ['Gia Lai', 'Ninh Thuận'], // Friday
+      6: ['Đà Nẵng', 'Quảng Ngãi', 'Đắk Nông'] // Saturday
+    };
+
+    const names = centralSchedule[dayOfWeek] || ['Đà Nẵng', 'Khánh Hòa', 'Đắk Lắk'];
+    return {
+      count: names.length,
+      names
+    };
+  }
+
+  if (dayOfWeek === 6) {
+    return {
+      count: 4,
+      names: ['TP.HCM', 'Long An', 'Bình Phước', 'Hậu Giang']
+    };
+  }
+
+  const southSchedule: { [key: number]: string[] } = {
+    0: ['Tiền Giang', 'Kiên Giang', 'Đà Lạt'],
+    1: ['TP.HCM', 'Đồng Tháp', 'Cà Mau'],
+    2: ['Bến Tre', 'Vũng Tàu', 'Bạc Liêu'],
+    3: ['Đồng Nai', 'Cần Thơ', 'Sóc Trăng'],
+    4: ['Tây Ninh', 'An Giang', 'Bình Thuận'],
+    5: ['Vĩnh Long', 'Bình Dương', 'Trà Vinh']
+  };
+
+  return {
+    count: 3,
+    names: southSchedule[dayOfWeek] || ['TP.HCM', 'Đồng Tháp', 'Cà Mau']
+  };
+};
+
 const parseResultToProvinces = (res: LotteryResult, activeRegion: Region): ProvinceEditState[] => {
   const isNorth = activeRegion === 'NORTH';
   
@@ -66,14 +126,14 @@ const parseResultToProvinces = (res: LotteryResult, activeRegion: Region): Provi
     count = 1;
     names = ['Miền Bắc'];
   } else {
-    count = 3;
     if (res.provinces) {
-      const parsedNames = res.provinces.split(',');
-      names = Array.from({ length: 3 }, (_, i) => parsedNames[i] || `Tỉnh ${i + 1}`);
+      const parsedNames = res.provinces.split(',').map(s => s.trim()).filter(Boolean);
+      count = parsedNames.length;
+      names = parsedNames;
     } else {
-      names = activeRegion === 'CENTRAL' 
-        ? ['Đà Nẵng', 'Khánh Hòa', 'Đắk Lắk'] 
-        : ['TP.HCM', 'Đồng Tháp', 'Cà Mau'];
+      const config = getProvincesConfig(activeRegion, res.date);
+      count = config.count;
+      names = config.names;
     }
   }
   
@@ -82,7 +142,7 @@ const parseResultToProvinces = (res: LotteryResult, activeRegion: Region): Provi
   // Helper to extract the array of values for a specific province index from a flat array
   const getProvinceArray = (prizeKey: keyof Omit<LotteryResult, 'date' | 'region' | 'provinces'>, provinceIdx: number, defaultLen: number): string[] => {
     const prizeDraws = res[prizeKey] || [];
-    const numProvinces = isNorth ? 1 : count;
+    const numProvinces = count;
     return Array.from({ length: defaultLen }, (_, drawIdx) => {
       const flatIdx = drawIdx * numProvinces + provinceIdx;
       return prizeDraws[flatIdx] || '';
@@ -113,14 +173,16 @@ const serializeProvincesToResult = (provs: ProvinceEditState[], reg: Region, dt:
   const provincesNamesStr = provs.map(p => p.name.trim() || 'Tỉnh').join(',');
   const videoUrlsStr = provs.map(p => (p.videoUrl || '').trim()).join(',');
 
-  // Helper to join a specific prize draw index across all provinces
+  // Helper to flat list a specific prize draw index across all provinces
   const joinDraws = (prizeKey: keyof Omit<ProvinceEditState, 'name' | 'videoUrl'>, drawCount: number): string[] => {
-    return Array.from({ length: drawCount }, (_, drawIdx) => {
-      return provs.map(p => {
+    const flatList: string[] = [];
+    for (let drawIdx = 0; drawIdx < drawCount; drawIdx++) {
+      provs.forEach(p => {
         const val = (p as any)[prizeKey][drawIdx] || '';
-        return val.trim();
-      }).join(',');
-    });
+        flatList.push(val.trim());
+      });
+    }
+    return flatList;
   };
 
   return {
@@ -455,7 +517,21 @@ function App() {
   useEffect(() => {
     const existing = resultsList.find(r => r.date === selectedDate && r.region === activeRegion);
     const isNorth = activeRegion === 'NORTH';
-    const numProvs = isNorth ? 1 : 3;
+
+    let numProvs = 1;
+    let defaultProvincesStr = '';
+    if (isNorth) {
+      numProvs = 1;
+      defaultProvincesStr = 'Miền Bắc';
+    } else if (existing && existing.provinces) {
+      const parsedProvs = existing.provinces.split(',').map(s => s.trim()).filter(Boolean);
+      numProvs = parsedProvs.length;
+      defaultProvincesStr = existing.provinces;
+    } else {
+      const config = getProvincesConfig(activeRegion, selectedDate);
+      numProvs = config.count;
+      defaultProvincesStr = config.names.join(',');
+    }
 
     const normalizeArray = (arr: string[] | undefined | null, expectedLength: number): string[] => {
       const safeArr = Array.isArray(arr) ? arr : [];
@@ -487,7 +563,7 @@ function App() {
       loadedResult = {
         date: selectedDate,
         region: activeRegion,
-        provinces: isNorth ? 'Miền Bắc' : activeRegion === 'CENTRAL' ? 'Đà Nẵng,Khánh Hòa,Đắk Lắk' : 'TP.HCM,Đồng Tháp,Cà Mau',
+        provinces: defaultProvincesStr,
         videoUrls: '',
         db: Array(1 * numProvs).fill(''),
         g1: Array(1 * numProvs).fill(''),
@@ -583,19 +659,6 @@ function App() {
   };
 
   const handleApplyFormResult = async () => {
-    // Check if any fields are empty
-    let hasEmpty = false;
-    Object.keys(currentResult).forEach(key => {
-      if (Array.isArray(currentResult[key as keyof LotteryResult])) {
-        (currentResult[key as keyof LotteryResult] as string[]).forEach(v => {
-          if (!v) hasEmpty = true;
-        });
-      }
-    });
-
-    if (hasEmpty) {
-      if (!confirm('Một số ô giải thưởng đang trống. Bạn vẫn muốn áp dụng?')) return;
-    }
 
     // Upsert results list
     const index = resultsList.findIndex(r => r.date === selectedDate && r.region === activeRegion);
@@ -1099,13 +1162,22 @@ function App() {
                 </div>
 
                 {/* Side-by-Side Provinces Grid */}
-                <div className="provinces-edit-grid animate-fade-in" style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${currentProvinces.length || 1}, minmax(280px, 1fr))`,
-                  gap: 20
-                }}>
-                  {currentProvinces.map((prov, pIdx) => (
-                    <div key={pIdx} className="card province-column-card" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div style={{ width: '100%', maxWidth: '100%', overflowX: 'auto', paddingBottom: 15 }}>
+                  <div className="provinces-edit-grid animate-fade-in" style={{
+                    display: 'flex',
+                    gap: 20,
+                    minWidth: '100%',
+                    width: 'max-content'
+                  }}>
+                    {currentProvinces.map((prov, pIdx) => (
+                      <div key={pIdx} className="card province-column-card" style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 18,
+                        flex: '1 0 320px',
+                        minWidth: 320,
+                        maxWidth: activeRegion === 'NORTH' ? '500px' : 'none'
+                      }}>
                       {/* Column Header: Province Name Input */}
                       <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 14 }}>
                         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.5px' }}>
@@ -1327,6 +1399,7 @@ function App() {
                     </div>
                   ))}
                 </div>
+              </div>
 
                 <div className="card actions-card animate-fade-in">
                   <button className="btn-primary" onClick={handleApplyFormResult} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
