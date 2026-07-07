@@ -19,6 +19,7 @@ import './App.css';
 import CustomersManager from './components/CustomersManager';
 import GiftsManager from './components/GiftsManager';
 import OrdersManager from './components/OrdersManager';
+import MinigamesManager from './components/MinigamesManager';
 
 // --- Default Mock Data Generators ---
 const API_BASE_URL = 'https://backend.vipmarts.com/api';
@@ -241,7 +242,7 @@ function App() {
   const [loToList, setLoToList] = useState<LoToItem[]>([]);
 
   // --- UI Control States ---
-  const [activeTab, setActiveTab] = useState<'results' | 'db_nam' | 'g1_nam' | 'lo_to' | 'customers' | 'gifts' | 'orders' | 'change_password'>('results');
+  const [activeTab, setActiveTab] = useState<'results' | 'db_nam' | 'g1_nam' | 'lo_to' | 'customers' | 'gifts' | 'orders' | 'change_password' | 'minigames'>('results');
   const [loading, setLoading] = useState<boolean>(false);
   const [saveLoading, setSaveLoading] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<{ status: 'idle' | 'success' | 'error'; message: string }>({ status: 'idle', message: '' });
@@ -957,6 +958,10 @@ function App() {
             <ShoppingBag size={18} />
             <span>Đơn Đổi Quà</span>
           </div>
+          <div className={`nav-item ${activeTab === 'minigames' ? 'active' : ''}`} onClick={() => setActiveTab('minigames')}>
+            <Award size={18} />
+            <span>Quản Lý Minigame</span>
+          </div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '15px 0' }} />
           <div className={`nav-item ${activeTab === 'change_password' ? 'active' : ''}`} onClick={() => setActiveTab('change_password')}>
             <Lock size={18} />
@@ -989,6 +994,7 @@ function App() {
             {activeTab === 'customers' && <CustomersManager />}
             {activeTab === 'gifts' && <GiftsManager />}
             {activeTab === 'orders' && <OrdersManager />}
+            {activeTab === 'minigames' && <MinigamesManager />}
 
             {/* TAB CHANGE PASSWORD */}
             {activeTab === 'change_password' && (
