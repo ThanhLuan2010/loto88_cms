@@ -56,6 +56,30 @@ interface ProvinceEditState {
   g8: string[];
 }
 
+const formatVideoEmbedUrl = (url: string) => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.includes('watch?v=')) {
+    return trimmed.replace('watch?v=', 'embed/').split('&')[0];
+  }
+  if (trimmed.includes('youtu.be/')) {
+    return trimmed.replace('youtu.be/', 'youtube.com/embed/');
+  }
+  if (trimmed.includes('vimeo.com') && !trimmed.includes('player.vimeo.com')) {
+    const match = trimmed.match(/vimeo\.com\/(?:.+\/)?([0-9]+)/);
+    if (match && match[1]) {
+      const id = match[1];
+      let hParam = '';
+      const hMatch = trimmed.match(/[?&]h=([^&]+)/);
+      if (hMatch && hMatch[1]) {
+        hParam = `?h=${hMatch[1]}`;
+      }
+      return `https://player.vimeo.com/video/${id}${hParam}`;
+    }
+  }
+  return trimmed;
+};
+
 const getProvincesConfig = (region: string, dateStr: string) => {
   if (region === 'NORTH') {
     return {
@@ -465,6 +489,8 @@ function App() {
           lastSeen: 1
         }));
       }
+
+      parsedLoTo.sort((a, b) => a.number.localeCompare(b.number));
 
       setLoToList(parsedLoTo);
       setUnsavedChanges(prev => ({ ...prev, lo_to: false }));
@@ -1360,7 +1386,7 @@ function App() {
                             className="prize-input-box"
                             value={prov.videoUrl || ''}
                             onChange={(e) => updateProvinceVideoUrl(pIdx, e.target.value)}
-                            placeholder="Chèn iframe link video kết quả vào"
+                            placeholder="Chèn iframe, link YouTube hoặc Vimeo kết quả vào"
                             style={{ width: '100%', borderColor: '#ef4444', color: '#ef4444', textAlign: 'center', fontSize: '0.85rem' }}
                           />
                         </div>
@@ -1387,13 +1413,7 @@ function App() {
                               <iframe 
                                 width="100%" 
                                 height="100%" 
-                                src={
-                                  prov.videoUrl.includes('watch?v=') 
-                                    ? prov.videoUrl.replace('watch?v=', 'embed/').split('&')[0] 
-                                    : prov.videoUrl.includes('youtu.be/') 
-                                      ? prov.videoUrl.replace('youtu.be/', 'youtube.com/embed/') 
-                                      : prov.videoUrl
-                                } 
+                                src={formatVideoEmbedUrl(prov.videoUrl)} 
                                 frameBorder="0" 
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                                 allowFullScreen
