@@ -60,7 +60,6 @@ interface EditState {
 export default function GiftsManager() {
   const [gifts, setGifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
   // Add form
@@ -91,7 +90,6 @@ export default function GiftsManager() {
       const data = await res.json();
       if (data.success) {
         setGifts(data.gifts);
-        setTotal(data.total ?? data.gifts.length);
       }
     } catch (e) { console.error(e); }
     setLoading(false);

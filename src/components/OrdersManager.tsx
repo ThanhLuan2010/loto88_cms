@@ -81,7 +81,6 @@ const OrdersManager: React.FC = () => {
         body: JSON.stringify({ status }),
       });
       fetchOrders();
-      fetchStatusCounts();
       alert('Đã cập nhật trạng thái đơn!');
     } catch (e) { console.error(e); }
   };
@@ -100,7 +99,7 @@ const OrdersManager: React.FC = () => {
           <h2>Quản Lý Đơn Đổi Quà</h2>
           <p>Xem danh sách khách hàng đã đổi quà và chuyển trạng thái "Đã trao quà".</p>
         </div>
-        <button className="btn-secondary" onClick={() => { fetchOrders(); fetchStatusCounts(); }}>
+        <button className="btn-secondary" onClick={fetchOrders}>
           Tải lại
         </button>
       </div>
